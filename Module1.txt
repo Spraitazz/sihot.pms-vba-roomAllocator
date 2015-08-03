@@ -1,0 +1,8 @@
+Public Type trolleyRooms
+    number As Integer
+    rooms() As Integer
+    difficulty As Double
+    floor As Integer
+    isCockburn As Boolean
+    hoovering As Boolean
+End Type

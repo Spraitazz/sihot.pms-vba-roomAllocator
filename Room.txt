@@ -1,0 +1,26 @@
+Option Explicit
+
+Private pnumber As Integer
+Private pisDeparture As Boolean
+Private pisCockburn As Boolean
+
+Public Property Get number() As Integer
+    number = pnumber
+End Property
+Public Property Let number(Value As Integer)
+    pnumber = Value
+End Property
+
+Public Property Get isDeparture() As Boolean
+    isDeparture = pisDeparture
+End Property
+Public Property Let isDeparture(Value As Boolean)
+    pisDeparture = Value
+End Property
+
+Public Property Get isCockburn() As Boolean
+    isCockburn = pisCockburn
+End Property
+Public Property Let isCockburn(Value As Boolean)
+    pisCockburn = Value
+End Property

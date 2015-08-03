@@ -1,0 +1,1 @@
+Sihot.pms automatic room allocator (for housekeeping) - tested only with rooms-to-clean report exported to excel 5.0
