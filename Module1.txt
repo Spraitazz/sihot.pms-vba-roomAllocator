@@ -1,8 +1,541 @@
-Public Type trolleyRooms
-    number As Integer
-    rooms() As Integer
-    difficulty As Double
-    floor As Integer
-    isCockburn As Boolean
-    hoovering As Boolean
-End Type
+Sub AutoRoomAllocator()
+    
+    'Get people number
+    If Len(Trim(Cells(526, "A"))) = 0 Then
+        MsgBox ("Please enter the number of people working in cell 526 A")
+    Else
+        Application.Calculation = xlCalculationManual
+        Application.ScreenUpdating = False
+        Application.DisplayStatusBar = False
+        
+        Dim stayoverDifficulty As Double, departureDifficulty As Double
+        stayoverDifficulty = 1
+        departureDifficulty = 1
+        
+        'for running time
+        'Dim startTime As Double
+        'startTime = ((Date - #1/1/1970#) * 86400 + Timer) * 1000
+        
+        '# of people working
+        Dim people As Integer
+        people = Cells(526, "A")
+
+        'All possible trolleys (change to shorthand collection initialization if possible)
+        Dim trolleys As Collection
+        Set trolleys = New Collection
+        trolleys.Add 131
+        trolleys.Add 132
+        trolleys.Add 141
+        trolleys.Add 142
+        trolleys.Add 151
+        trolleys.Add 152
+        trolleys.Add 153
+        trolleys.Add 161
+        trolleys.Add 162
+        trolleys.Add 171
+        trolleys.Add 172
+        trolleys.Add 241
+        trolleys.Add 251
+        trolleys.Add 252
+        trolleys.Add 261
+        'trolley coll done
+
+        'current date for stayovers, departures
+        Dim curday As String, curmonth As String
+
+        If Day(Now) < 10 Then
+            curday = "0" & Day(Now)
+        Else
+            curday = Day(Now)
+        End If
+
+        If Month(Now) < 10 Then
+            curmonth = "0" & Month(Now)
+        Else
+            curmonth = Month(Now)
+        End If
+
+        'get date info
+        Dim dateNow As String
+        dateNow = curday & "." & curmonth & "." & Year(Now)
+
+        Dim Lweekday As Integer
+        Lweekday = Weekday(Now(), vbMonday)
+
+        'Current date stored, color cells
+
+        'Make sure cells colorless first and no LCH for retry
+        For K = 33 To 502
+            Cells(K, "A").Interior.ColorIndex = 0
+            If Trim(Cells(K, "C")) = "LCH" Then
+                Cells(K, "C").Value = ""
+            End If
+        Next K
+
+        'Count departures, stayovers
+        Dim rooms As Collection, stayovers As Integer, departures As Integer, diffPerFloor, _
+        currentFloor As Integer, currentFloorStr As String, thisDiff As Double
+        Set rooms = New Collection
+        Set diffPerFloor = CreateObject("Scripting.Dictionary")
+        stayovers = 0
+        departures = 0
+
+        'Color cells appropriately
+        For K = 33 To 502
+
+            'Don't include ------- rooms
+            If Len(Cells(K, "C")) = 0 Then
+
+                'There is someone staying in the room - needs to be cleaned
+                If Len(Cells(K, "E")) > 0 Then
+
+                    Dim newRoom As Room
+                    Set newRoom = New Room
+
+                    'check if cockburn
+                    Dim thisCell As Integer
+                    thisCell = CInt(Cells(K, "A"))
+
+                    currentFloor = (thisCell - thisCell Mod 100) / 100
+
+                    If (thisCell > 328 And thisCell < 400) Or (thisCell > 435 And thisCell < 500) Or (thisCell > 527 And thisCell < 600) Or (thisCell > 632 And thisCell < 700) Then
+                        newRoom.isCockburn = True
+                        currentFloorStr = currentFloor & "cb"
+                    Else
+                        newRoom.isCockburn = False
+                        currentFloorStr = currentFloor
+                    End If
+
+                    'check if departure, color pink
+                    If Cells(K, "I") = dateNow Or Cells(K, "G") = dateNow Then
+                        Cells(K, "A").Interior.ColorIndex = 7
+                        newRoom.number = Cells(K, "A")
+                        newRoom.isDeparture = True
+                        departures = departures + 1
+                        thisDiff = departureDifficulty
+
+                    'stayover, color yellow, check LCH
+                    Else
+                        Cells(K, "A").Interior.ColorIndex = 6
+                        newRoom.number = Cells(K, "A")
+                        newRoom.isDeparture = False
+                        stayovers = stayovers + 1
+                        thisDiff = stayoverDifficulty
+                        'check for linen change
+                        If Cells(K, "M") = "L" And Len(Cells(K, "L")) = 0 Then
+                            Cells(K, "C").Value = "LCH"
+                        End If
+
+                    End If
+
+                    If Not diffPerFloor.Exists(currentFloorStr) Then
+                        diffPerFloor.Add currentFloorStr, thisDiff
+                    Else
+                        diffPerFloor(currentFloorStr) = diffPerFloor(currentFloorStr) + thisDiff
+                    End If
+
+                    rooms.Add newRoom
+                    
+                End If
+
+            End If
+        Next K
+
+        'Calculate "difficulty" per person, stayover difficulty - chosen at beginning, departure - at beginning
+        Dim totalDifficulty As Double
+        totalDifficulty = stayovers * stayoverDifficulty + departures * departureDifficulty
+        Dim diffPerPerson As Double
+
+        'Actions for different # of people working
+        If people >= trolleys.Count Then
+            diffPerPerson = totalDifficulty / trolleys.Count
+            'MsgBox ("Working with " & people & " trolleys. " & diffPerPerson & " difficulty per person")
+        Else
+            'Less than 15, remove n trolleys, dont remove cb trolleys
+            diffPerPerson = totalDifficulty / people
+            'MsgBox ("Working with " & people & " trolleys. " & diffPerPerson & " difficulty per person")
+
+            'removing trolleys
+            For i = 1 To (15 - people)
+
+                Dim min As Integer, minKey As String
+                min = 9999
+
+                'go through difficulties, find minimum (except 2 as no trolleys there)
+                For Each Key In diffPerFloor.Keys
+                    If diffPerFloor(Key) < min And InStr(Key, "cb") = 0 And Not Key = 2 Then
+                        min = diffPerFloor(Key)
+                        minKey = Key
+                    End If
+                Next
+
+                'Go through trolleys to remove
+                For l = 1 To trolleys.Count
+                    'gets trolley's floor
+                    If ((trolleys(l) - trolleys(l) Mod 10 - ((trolleys(l) - trolleys(l) Mod 100))) / 10) = CInt(minKey) Then
+                        trolleys.Remove (l)
+                        Exit For
+                    End If
+                Next l
+                
+                'remove this floor to avoid deleting 2 (all) trolleys from same floor
+                diffPerFloor.Remove (minKey)
+
+            Next i
+       
+        End If
+
+        'Each trolley has a floor, preferably give rooms from this floor, then more rooms from following floor
+        Dim trolleyRooms() As trolleyRooms
+       
+        For i = 1 To trolleys.Count
+            
+            Dim thisTrolleyRooms As trolleyRooms, thisRooms() As Integer, thisRoomNo As Integer, _
+            thisFloor As Integer, cbTrolley As Boolean, thisDifficulty As Double, thisRoomFloor As Integer, _
+            currentRoomIndex As Integer, currFloor As Integer, hasFloors() As Integer, thisDepartures As Integer, _
+            thisStayovers As Integer
+            'Set trolley number
+            thisTrolleyRooms.number = trolleys(i)
+           
+            thisDepartures = 0
+            thisStayovers = 0
+            thisRoomNo = 0
+            
+            'VERY IMPORTANT - IF NOT REDIMMED, COULD SAVE FROM BEFORE
+            ReDim hasFloors(0)
+            ReDim thisRooms(0)
+            'IMPORTANT
+            
+            thisFloor = (trolleys(i) - trolleys(i) Mod 10 - ((trolleys(i) - trolleys(i) Mod 100))) / 10
+            currFloor = thisFloor
+            'Set trolley floor
+            thisTrolleyRooms.floor = thisFloor
+            cbTrolley = False
+            thisDifficulty = 0
+            
+            
+
+            'Check if trolley is cockburn
+            If (trolleys(i) - trolleys(i) Mod 100) = 200 Then
+            'cockburn trolley, only assign cockburn rooms
+                cbTrolley = True
+            End If
+            
+            'Set trolley CB/Not CB
+            thisTrolleyRooms.isCockburn = cbTrolley
+
+            'start with this trolley's floor
+            thisRoomFloor = (rooms(1).number - rooms(1).number Mod 100) / 100
+            
+            currentRoomIndex = 1
+            While (Not thisRoomFloor = thisFloor) And (currentRoomIndex < rooms.Count)
+                currentRoomIndex = currentRoomIndex + 1
+                thisRoomFloor = (rooms(currentRoomIndex).number - rooms(currentRoomIndex).number Mod 100) / 100
+            Wend
+            'found first room on floor
+            
+            'Checks for: number of floors taken, which floors were taken, whether a room was added from a given floor
+            Dim floorsTaken As Integer
+            floorsTaken = 0
+            ReDim Preserve hasFloors(0)
+            hasFloors(0) = thisFloor
+            Dim addedFlag As Boolean
+            addedFlag = False
+            
+            'Main loop to give out rooms
+            Do While floorsTaken < 2 And thisDifficulty <= diffPerPerson And currentRoomIndex <= rooms.Count
+            
+                thisRoomFloor = (rooms(currentRoomIndex).number - rooms(currentRoomIndex).number Mod 100) / 100
+
+                If Not thisRoomFloor = currFloor Then
+                    'Jumped floor
+                    If addedFlag = True Then
+                        'Added one or more rooms from previous floor
+                        floorsTaken = floorsTaken + 1
+                        addedFlag = False
+                        If floorsTaken = 2 Then
+                            'Finish, as 2 floors is max
+                            Exit Do
+                        Else
+                            ReDim Preserve hasFloors(floorsTaken)
+                            hasFloors(floorsTaken) = currFloor
+                        End If
+                    End If
+                    currFloor = thisRoomFloor
+                End If
+                
+                
+                If rooms(currentRoomIndex).isCockburn = cbTrolley Then
+
+'                    'check if dep or stay, add to this trolley's list, add to rooms taken, increment difficulty
+                    ReDim Preserve thisRooms(thisRoomNo)
+                    thisRooms(thisRoomNo) = rooms(currentRoomIndex).number
+                    thisRoomNo = thisRoomNo + 1
+                    
+                    
+                    If rooms(currentRoomIndex).isDeparture = True Then
+                        thisDifficulty = thisDifficulty + departureDifficulty
+                        thisDepartures = thisDepartures + 1
+                    Else
+                        thisDifficulty = thisDifficulty + stayoverDifficulty
+                        thisStayovers = thisStayovers + 1
+                    End If
+
+                    rooms.Remove (currentRoomIndex)
+                   
+                    currentRoomIndex = currentRoomIndex - 1
+                    addedFlag = True
+                   
+                End If
+
+                currentRoomIndex = currentRoomIndex + 1
+            
+            Loop
+            
+            thisTrolleyRooms.rooms = thisRooms
+            thisTrolleyRooms.departures = thisDepartures
+            thisTrolleyRooms.stayovers = thisStayovers
+            thisTrolleyRooms.difficulty = thisDifficulty
+            thisTrolleyRooms.floorsCleaning = hasFloors
+            ReDim Preserve trolleyRooms(i - 1)
+            trolleyRooms(i - 1) = thisTrolleyRooms
+            
+        Next i
+
+        'final check for rooms not taken - give to people with least difficulty
+        
+        While rooms.Count > 0
+            'using index 1 because this always remains
+    
+            thisRoomFloor = (rooms(1).number - rooms(1).number Mod 100) / 100
+            Dim minDiffIndex As Integer
+            minDiffIndex = 0
+            Dim minDiff As Double
+            minDiff = 99999
+            
+            'Make sure correct building, less difficulty and correct floor
+               
+            For m = 0 To UBound(trolleyRooms)
+            
+                Dim hasFloor As Boolean
+                hasFloor = False
+                For p = 0 To UBound(trolleyRooms(m).floorsCleaning)
+                    If trolleyRooms(m).floorsCleaning(p) = thisRoomFloor Then
+                        hasFloor = True
+                        Exit For
+                    End If
+                Next p
+                
+                If (hasFloor Or UBound(trolleyRooms(m).floorsCleaning) = 0) And trolleyRooms(m).difficulty < minDiff And rooms(1).isCockburn = trolleyRooms(m).isCockburn Then
+                    minDiff = trolleyRooms(m).difficulty
+                    minDiffIndex = m
+                End If
+            Next m
+    
+            'make a copy of room array, add new room to end, replace in trolleyrooms
+            Dim tempRooms() As Integer
+            tempRooms = trolleyRooms(minDiffIndex).rooms
+            ReDim Preserve tempRooms(UBound(tempRooms) + 1)
+            tempRooms(UBound(tempRooms)) = rooms(1).number
+            trolleyRooms(minDiffIndex).rooms = tempRooms
+               
+            'Add to difficulty, remove room
+               
+            If rooms(1).isDeparture = True Then
+                trolleyRooms(minDiffIndex).difficulty = trolleyRooms(minDiffIndex).difficulty + departureDifficulty
+            Else
+                trolleyRooms(minDiffIndex).difficulty = trolleyRooms(minDiffIndex).difficulty + stayoverDifficulty
+            End If
+            
+            rooms.Remove (1)
+        
+        Wend
+        
+        'Assign hoovering, linen storage cleaning, separate for cockburn and non-cockburn, check if multiple trolleys or 1
+        
+        Dim cbHoover(3 To 6) As Integer
+        Dim hoover(2 To 7) As Integer
+        
+       
+        For l = 2 To 7
+            Dim minThisFloor As Double
+            minThisFloor = 99999
+            Dim minThisFloorCB As Double
+            minThisFloorCB = 99999
+            Dim minTrolley As Integer
+            Dim minTrolleyCB As Integer
+            For m = 0 To UBound(trolleyRooms)
+                If trolleyRooms(m).floor = l Then
+                    If trolleyRooms(m).isCockburn Then
+                        If trolleyRooms(m).difficulty <= minThisFloorCB Then
+                                minThisFloorCB = trolleyRooms(m).difficulty
+                                minTrolleyCB = trolleyRooms(m).number
+                        End If
+                    Else
+                        If trolleyRooms(m).difficulty <= minThisFloor Then
+                            minThisFloor = trolleyRooms(m).difficulty
+                            minTrolley = trolleyRooms(m).number
+                        End If
+                    End If
+                    
+                End If
+            Next m
+            
+            hoover(l) = minTrolley
+            If l >= 3 And l <= 6 Then
+                cbHoover(l) = minTrolleyCB
+            End If
+        Next l
+      
+
+        'ROOMS ASSIGNED, CREATE PRINTSHEET AND PREPARE TO PRINT
+
+        Dim printSheet As Worksheet
+        Set printSheet = Sheets.Add
+        printSheet.Name = "Sheet2"
+        Worksheets("Sheet1").Activate
+        
+        '1 A4 page = 59 rows
+        Dim totalRooms As Integer
+        totalRooms = 0
+
+        For i = 0 To UBound(trolleyRooms)
+
+            'Add picture
+            printSheet.Shapes.AddPicture _
+            "C:\Users\Jonas\Desktop\vba\sihot.bmp", _
+            True, True, 0, 752 * i, 100, 50
+
+            'Top info (to be filled by supervisor)
+            printSheet.Cells(3 + i * 59, "H").Value = "Name:"
+            printSheet.Cells(4 + i * 59, "H").Value = "Keys:"
+            printSheet.Cells(5 + i * 59, "H").Value = "Trolley: " & trolleyRooms(i).number
+           
+            'Calculate time to finish now:
+            Dim ttf As Double
+            Dim cleaningTime As Double
+            cleaningTime = (UBound(trolleyRooms(i).rooms) + 1) / 3
+            Dim ttfStr As String
+            Dim startHour As Double
+            If Lweekday = 7 Then
+                'Sunday, start 9:30 including break
+                startHour = 9.5
+            Else
+                'Other, start 9:00 including break
+                startHour = 9
+            End If
+            ttf = startHour + cleaningTime
+            Dim tail As Double
+            tail = Round((ttf - Int(ttf)) * 60, 0)
+            If tail = 0 Then
+                ttfStr = Int(ttf) & ":" & "00"
+            Else
+                ttfStr = Int(ttf) & ":" & tail
+            End If
+            
+            For m = 0 To UBound(trolleyRooms(i).rooms)
+                For K = 33 To 502
+                    If Trim(Cells(K, "A").Value) = trolleyRooms(i).rooms(m) Then
+                        'Found this room's row, copy
+                        Worksheets("Sheet1").Range("A" & K & ":J" & K).Copy printSheet.Range("A" & (59 * i + 10 + m))
+                        printSheet.Range("A" & (59 * i + 10 + m) & ":J" & (59 * i + 10 + m)).BorderAround _
+                        ColorIndex:=0, Weight:=xlThin
+                        totalRooms = totalRooms + 1
+                        Exit For
+                    End If
+                Next K
+            Next m
+            
+            'Get hoovering/linen store info
+            
+            Dim hoovering As Boolean
+            hoovering = False
+            Dim linenStore As Boolean
+            
+            
+            If trolleyRooms(i).isCockburn Then
+                If cbHoover(trolleyRooms(i).floor) = trolleyRooms(i).number Then
+                    hoovering = True
+                End If
+            Else
+                If hoover(trolleyRooms(i).floor) = trolleyRooms(i).number Then
+                    hoovering = True
+                End If
+            End If
+            
+            linenStore = Not hoovering
+            
+            'Make sure floors with removed trolleys are hoovered and linen stores cleaned
+            Dim hasAll As Boolean
+            hasAll = False
+            For Each Key In diffPerFloor.Keys
+                If trolleyRooms(i).floor = Key Then
+                    'this floor has both (all) trolleys
+                    hasAll = True
+                    Exit For
+                End If
+            Next Key
+            
+            If Not hasAll Then
+                linenStore = True
+                hoovering = True
+            End If
+            
+            'Make sure CB floors 4-6 do both hoover and linen
+            If (trolleyRooms(i).floor = 4 Or trolleyRooms(i).floor = 6) And trolleyRooms(i).isCockburn Then
+                hoovering = True
+                linenStore = True
+            End If
+            
+            printSheet.Cells(59 * i + 54, "A") = "Finish time excluding DND and No Service: " & ttfStr
+            
+            If hoovering Then
+                If trolleyRooms(i).isCockburn Then
+                    printSheet.Cells(59 * i + 55, "A") = "Hoovering level: " & trolleyRooms(i).floor & "CB"
+                Else
+                    printSheet.Cells(59 * i + 55, "A") = "Hoovering level: " & trolleyRooms(i).floor
+                End If
+            Else
+                printSheet.Cells(59 * i + 55, "A") = "Hoovering level: -"
+            End If
+            
+            If linenStore Then
+                If trolleyRooms(i).isCockburn Then
+                    printSheet.Cells(59 * i + 56, "A") = "Cleaning linen storage level: " & trolleyRooms(i).floor & "CB"
+                Else
+                    printSheet.Cells(59 * i + 56, "A") = "Cleaning linen storage level: " & trolleyRooms(i).floor
+                End If
+            Else
+                printSheet.Cells(59 * i + 56, "A") = "Cleaning linen storage level: -"
+            End If
+           
+        Next i
+        
+        'POSSIBLE TO ADD A PAGE WITH INFO: DATE, PEOPLE WORKING, TROLLEYS WORKING, ROOM COUNTS ETC.
+        printSheet.Activate
+        printSheet.PageSetup.PaperSize = xlPaperA4
+        Columns(4).EntireColumn.Delete
+        
+        If totalRooms = stayovers + departures Then
+            MsgBox ("Success! Total number of rooms to clean: " & (departures + stayovers) & ", rooms allocated: " & totalRooms)
+        ElseIf totalRooms > stayovers + departures Then
+            Dim result As Integer
+            result = MsgBox(("Error! Too many rooms allocated. Check for duplicates. Rooms to clean: " & (departures + stayovers) & ", rooms allocated: " & totalRooms), vbCritical, "Room allocation error")
+        Else
+            result = MsgBox(("Error! Not all rooms allocated. Rooms to clean: " & (departures + stayovers) & ", rooms allocated: " & totalRooms), vbCritical, "Room allocation error")
+        End If
+
+        'MsgBox ("Done, ran in " & (((Date - #1/1/1970#) * 86400 + Timer) * 1000 - startTime) & " ms")
+        
+        Application.Calculation = xlCalculationAutomatic
+        Application.ScreenUpdating = True
+        Application.DisplayStatusBar = True
+
+
+    End If
+
+End Sub
+
+
+
+
